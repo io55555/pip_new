@@ -1,0 +1,53 @@
+name: 'pipsh'
+on:
+  schedule:
+    - cron: 0 10 * * * Asia/Shanghai
+  workflow_dispatch:
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Worker
+        env:
+          TZ: Asia/Shanghai
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat << \EOFXEOF >0
+          ${{ vars.pipsh }}
+          EOFXEOF
+          tr '\r\n' '\n' < 0 > 1
+          bash 1 ${{ secrets.MAXMIND_KEY }}
+      - name: Release
+        if: ${{ env.MAKERELEASE == '1' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ env.VERSIONNOW }}
+          tag_name: ${{ env.VERSIONNOW }}
+          body_path: /tmp/RELEASE.NOTE
+          files: ./out/release/*
+      - name: Clear Releases
+        if: ${{ env.MAKERELEASE == '1' }}
+        uses: dev-drprasad/delete-older-releases@v0.2.0
+        with:
+          keep_latest: 10
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push branch db
+        if: ${{ env.MAKERELEASE == '1' }}
+        run: |
+          cd /tmp/db/
+          git init
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b db
+          git add -A
+          git commit -m .
+          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push -f origin db
